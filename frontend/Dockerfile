@@ -1,16 +1,5 @@
 FROM node:22-alpine AS base
 
-# Development stage
-FROM base AS dev
-ENV NODE_ENV development
-ENV OS windows
-WORKDIR /app
-COPY package.json yarn.lock ./
-RUN yarn
-COPY . .
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
-
 # Production dependencies
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
@@ -23,10 +12,23 @@ RUN \
   else echo "Lockfile not found." && exit 1; \
   fi
 
+# Development stage
+FROM base AS dev
+
+WORKDIR /app
+RUN rm -rf node_modules && rm -rf .next
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+ENV NEXT_TELEMETRY_DISABLED 1
 
 RUN \
   if [ -f yarn.lock ]; then yarn run build; \

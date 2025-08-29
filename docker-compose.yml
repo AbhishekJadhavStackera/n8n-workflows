@@ -1,6 +1,6 @@
 x-shared: &shared
   restart: always
-  image: docker.n8n.io/n8nio/n8n
+  image: n8nio/n8n:latest
   environment:
     - DB_TYPE=postgresdb
     - DB_POSTGRESDB_HOST=postgres
@@ -10,6 +10,7 @@ x-shared: &shared
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
     - NODE_ENV=production
     - EXECUTIONS_MODE=queue
+    - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
     - QUEUE_BULL_REDIS_HOST=redis
     - QUEUE_HEALTH_CHECK_ACTIVE=true
     - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
@@ -23,6 +24,8 @@ x-shared: &shared
     - N8N_API_KEY=${N8N_API_KEY}
     - N8N_RUNNERS_ENABLED=true
     - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    - N8N_CORS_ORIGIN=*
+    - N8N_IFRAME_OPTIONS=sameorigin
   links:
     - postgres
     - redis
@@ -79,6 +82,7 @@ services:
   n8n:
     <<: *shared
     container_name: n8n
+    command: start
     ports:
       - 5678:5678
     networks:
@@ -93,14 +97,72 @@ services:
     networks:
       - n8n-network
 
+  runner:
+    container_name: wf-runner
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
+    image: wf-runner:latest
+    restart: "no"
+    networks:
+      - n8n-network
+
+  api:
+    container_name: api
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_NON_ROOT_USER}:${POSTGRES_NON_ROOT_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - DOCKER_SOCK=/var/run/docker.sock
+    ports:
+      - 4000:4000
+    volumes:
+      # - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock # <--- allow docker usage from inside container
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - n8n-network
+
+  worker:
+    container_name: worker
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: npm run worker
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_NON_ROOT_USER}:${POSTGRES_NON_ROOT_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - DOCKER_SOCK=/var/run/docker.sock
+      - SANDBOX_HOST_DIR=${PWD}/sandbox_tmp
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./sandbox_tmp:/sandbox_tmp
+    depends_on:
+      - postgres
+      - redis
+      - runner
+    networks:
+      - n8n-network
+
   frontend:
     container_name: frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: dev
+      target: runner
     restart: always
+    command: ['node', 'server.js']
     environment:
+      - NODE_ENV=production
       - WATCHPACK_POLLING=true
       - NEXT_WEBPACK_USEPOLLING=1
       - NEXT_TELEMETRY_DISABLED=1
@@ -110,9 +172,10 @@ services:
       - N8N_API_KEY=${N8N_API_KEY}
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    # volumes:
+    #   - ./frontend:/app
+    #   - /app/node_modules
+    #   - /app/.next
     ports:
       - 3000:3000
     depends_on:
@@ -124,7 +187,6 @@ volumes:
   db_storage:
   n8n_storage:
   redis_storage:
-
 
 networks:
   n8n-network:

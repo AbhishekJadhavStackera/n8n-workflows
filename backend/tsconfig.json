@@ -1,0 +1,24 @@
+    {
+      "compilerOptions": {
+        "lib": [
+          "ESNext"
+        ],
+        "target": "ESNext",
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "emitDecoratorMetadata": true,
+        "module": "commonjs",
+        "strictPropertyInitialization": false,
+        "experimentalDecorators": true
+      },
+      "include": [
+        "src/**/*.ts"
+      ],
+      "exclude": [
+        "node_modules"
+      ]
+    }

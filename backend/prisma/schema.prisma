@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+  workflows Workflow[]
+  apiKeys   ApiKey[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  label     String?
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Workflow {
+  id          String   @id @default(cuid())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  name        String
+  slug        String   @unique
+  path        String?  // webhook path like "execute-myflow"
+  version     Int      @default(1)
+  json        Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  executions  Execution[]
+}
+
+model Execution {
+  id         String   @id @default(cuid())
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  workflowId String
+  status     String   // pending | running | success | failed
+  input      Json?
+  output     Json?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
